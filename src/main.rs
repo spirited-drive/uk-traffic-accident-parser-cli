@@ -349,6 +349,7 @@ async fn main() {
             batch.clear();
 
             print!("\r   |-- {} records processed", records_processed.to_formatted_string(&Locale::en));
+            std::io::stdout().flush().unwrap();
         }
     }
 
@@ -359,6 +360,7 @@ async fn main() {
         print!("\r   |-- {} records processed", records_processed.to_formatted_string(&Locale::en));
     }
 
+    println!("");
     println!("");
     println!("Finished! Took {:?}", timer.elapsed());
 }
