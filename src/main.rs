@@ -6,6 +6,7 @@ use time::Date;
 use time::macros::format_description;
 use sqlx::{AssertSqlSafe, postgres::PgPoolOptions};
 use sqlx::FromRow;
+use sqlx::{Postgres, QueryBuilder};
 use clap::Parser;
 use serde::{Deserialize};
 
@@ -349,6 +350,9 @@ async fn main() {
         std::process::exit(1);
     }
 
+    const BATCH_SIZE: usize = 2123;
+    let mut batch: Vec<CountInsert> = Vec::with_capacity(BATCH_SIZE);
+
     let mut reader = reader_result.unwrap();
     let headers = reader.headers().unwrap().clone();
     let mut records_processed = 0;
@@ -403,29 +407,35 @@ async fn main() {
 
         let direction = raw_count.direction_of_travel.trim().to_uppercase();
 
-        sqlx::query("
-            INSERT INTO traffic.counts(count_point_id, date, hour, direction, bicycles, motorcycles, cars, buses, lgvs, hgvs)
-            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
-        ")
-        .bind(&count_point.id)
-        .bind(&date)
-        .bind(raw_count.hour as i16)
-        .bind(&direction)
-        .bind(raw_count.bicycles as i32)
-        .bind(raw_count.motorcycles as i32)
-        .bind(raw_count.cars as i32)
-        .bind(raw_count.buses as i32)
-        .bind(raw_count.lgvs as i32)
-        .bind(raw_count.hgvs as i32)
-        .execute(&pool)
-        .await
-        .expect("Error inserting Count");
+        let row = CountInsert {
+            count_point_id: count_point.id,
+            date: date,
+            hour: raw_count.hour as i16,
+            direction: direction,
+            bicycles: raw_count.bicycles as i32,
+            motorcycles: raw_count.motorcycles as i32,
+            cars: raw_count.cars as i32,
+            buses: raw_count.buses as i32,
+            lgvs: raw_count.lgvs as i32,
+            hgvs: raw_count.hgvs as i32,
+        };
 
-        records_processed += 1;
+        batch.push(row);
 
-        if records_processed % 10 == 0 {
+        if batch.len() == BATCH_SIZE {
+            insert_count_batch(&pool, &batch).await.unwrap();
+            records_processed += batch.len() as u64;
+            batch.clear();
+
             print!("\r   |-- {} records processed", records_processed.to_formatted_string(&Locale::en));
         }
+    }
+
+    if !batch.is_empty() {
+        insert_count_batch(&pool, &batch).await.unwrap();
+        records_processed += batch.len() as u64;
+
+        print!("\r   |-- {} records processed", records_processed.to_formatted_string(&Locale::en));
     }
 
     println!("");
@@ -473,6 +483,55 @@ struct CountPointCSV {
     road_category: String,
     latitude: f64,
     longitude: f64,
+}
+
+struct CountInsert {
+    count_point_id: i32,
+    date: time::Date,
+    hour: i16,
+    direction: String,
+    bicycles: i32,
+    motorcycles: i32,
+    cars: i32,
+    buses: i32,
+    lgvs: i32,
+    hgvs: i32,
+}
+
+async fn insert_count_batch(pool: &sqlx::PgPool, rows: &[CountInsert]) -> Result<(), sqlx::Error> {
+    let mut query = QueryBuilder::<Postgres>::new("
+        INSERT INTO traffic.counts
+        (
+            count_point_id,
+            date,
+            hour,
+            direction,
+            bicycles,
+            motorcycles,
+            cars,
+            buses,
+            lgvs,
+            hgvs
+        )
+    ");
+
+    query.push_values(rows, |mut values, row| {
+        values
+            .push_bind(row.count_point_id)
+            .push_bind(row.date)
+            .push_bind(row.hour)
+            .push_bind(&row.direction)
+            .push_bind(row.bicycles)
+            .push_bind(row.motorcycles)
+            .push_bind(row.cars)
+            .push_bind(row.buses)
+            .push_bind(row.lgvs)
+            .push_bind(row.hgvs);
+    });
+
+    query.build().execute(pool).await?;
+
+    return Ok(());
 }
 
 async fn ensure_database_exists(config: &Config) -> Result<(), sqlx::Error> {
