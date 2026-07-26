@@ -165,19 +165,30 @@ impl CountPointDB {
         return Ok(count_points);
     }
 
-    pub async fn insert(pool: &PgPool, id: i32, local_authority_id: i32, road_category_id: i32, road_name: &str, location: &PgPoint) -> Result<Self, sqlx::Error> {
-        sqlx::query_as("
-            INSERT INTO traffic.count_points (id, local_authority_id, road_category_id, road_name, location)
-            VALUES($1, $2, $3, $4, $5)
-            RETURNING *;
-        ")
-        .bind(id)
-        .bind(local_authority_id)
-        .bind(road_category_id)
-        .bind(road_name)
-        .bind(location)
-        .fetch_one(pool)
-        .await
+    pub async fn insert_batch(pool: &PgPool, rows: &[Self]) -> Result<(), sqlx::Error> {
+        let mut query = QueryBuilder::<Postgres>::new("
+            INSERT INTO traffic.count_points
+            (
+                id,
+                local_authority_id,
+                road_category_id,
+                road_name,
+                location
+            )
+        ");
+
+        query.push_values(rows, |mut values, row| {
+            values
+                .push_bind(row.id)
+                .push_bind(row.local_authority_id)
+                .push_bind(row.road_category_id)
+                .push_bind(&row.road_name)
+                .push_bind(&row.location);
+        });
+
+        query.build().execute(pool).await?;
+
+        Ok(())
     }
 }
 
@@ -191,7 +202,7 @@ where
         .await
 }
 
-pub struct CountInsert {
+pub struct CountDB {
     pub count_point_id: i32,
     pub date: time::Date,
     pub hour: i16,
@@ -204,8 +215,8 @@ pub struct CountInsert {
     pub hgvs: i32,
 }
 
-impl CountInsert {
-    pub async fn insert_count_batch(pool: &PgPool, rows: &[CountInsert]) -> Result<(), sqlx::Error> {
+impl CountDB {
+    pub async fn insert_count_batch(pool: &PgPool, rows: &[Self]) -> Result<(), sqlx::Error> {
         let mut query = QueryBuilder::<Postgres>::new("
             INSERT INTO traffic.counts
             (
@@ -262,7 +273,9 @@ pub async fn ensure_database_exists(config: &Config) -> Result<(), sqlx::Error> 
 
     if !exists {
         // create database
-        sqlx::query(AssertSqlSafe(config.sql_create_database.clone()))
+        let sql_create_database = config.sql_create_database.clone()
+            .replace("####DATEBASE_NAME####", &config.database_name);
+        sqlx::query(AssertSqlSafe(sql_create_database))
             .execute(&pool)
             .await?;
 

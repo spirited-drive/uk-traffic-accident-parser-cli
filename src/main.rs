@@ -14,7 +14,7 @@ use time::macros::format_description;
 use sqlx::postgres::types::PgPoint;
 use sqlx::{postgres::PgPoolOptions};
 
-use crate::database::{RoadCategoryDB, RegionDB, LocalAuthorityDB, CountPointDB, CountInsert};
+use crate::database::{CountDB, CountPointDB, LocalAuthorityDB, RegionDB, RoadCategoryDB};
 use crate::csv_utils::{CountPointCSV, RawCountCSV};
 use crate::models::{Config};
 
@@ -130,8 +130,10 @@ async fn main() {
     println!("");
 
     // load CSV count points
-    print!("-- Reading \"Count Points.csv\" file");
-    std::io::stdout().flush().unwrap();
+    println!("-- Reading \"Count Points.csv\" file");
+
+    const COUNT_POINT_BATCH_SIZE: usize = 1234;
+    let mut count_point_batch: Vec<CountPointDB> = Vec::with_capacity(COUNT_POINT_BATCH_SIZE);
 
     let mut total_road_catregories_inserted = 0;
     let mut total_regions_inserted = 0;
@@ -217,33 +219,53 @@ async fn main() {
         }
 
         if !count_points.contains_key(&count_point_csv.count_point_id) {
-            let location = PgPoint {
-                x: count_point_csv.latitude,
-                y: count_point_csv.longitude
+            let count_point = CountPointDB {
+                id: count_point_csv.count_point_id,
+                local_authority_id: local_authority.id,
+                road_category_id: road_category.id,
+                road_name: count_point_csv.road_name,
+                location: PgPoint {
+                    x: count_point_csv.latitude,
+                    y: count_point_csv.longitude
+                },
             };
 
-            let count_point = CountPointDB::insert(&pool,
-                count_point_csv.count_point_id,
-                local_authority.id,
-                road_category.id,
-                &count_point_csv.road_name,
-                &location
-            )
-            .await
-            .expect("Error inserting Count Point");
+            count_point_batch.push(count_point);
 
-            count_points.insert(count_point.id, count_point);
-            total_count_points_inserted += 1;
+            if count_point_batch.len() == COUNT_POINT_BATCH_SIZE {
+                CountPointDB::insert_batch(&pool, &count_point_batch).await.unwrap();
+                total_count_points_inserted += count_point_batch.len() as u64;
+                count_point_batch.clear();
+
+                print!("\r   |-- {} new Count Points inserted", total_count_points_inserted.to_formatted_string(&Locale::en));
+                std::io::stdout().flush().unwrap();
+            }
         }
     }
 
-    print!(" ...done!\n");
+    if !count_point_batch.is_empty() {
+        CountPointDB::insert_batch(&pool, &count_point_batch).await.unwrap();
+        total_count_points_inserted += count_point_batch.len() as u64;
+
+        print!("\r   |-- {} new Count Points inserted", total_count_points_inserted.to_formatted_string(&Locale::en));
+    }
+
+    if total_count_points_inserted == 0 {
+        println!("   |-- 0 new Count Points inserted");
+    }
+    else {
+        println!("");
+    }
+
     println!("   |-- {} new Road Categories inserted", total_road_catregories_inserted);
     println!("   |-- {} new Regions inserted", total_regions_inserted);
     println!("   |-- {} new Local Authorities inserted", total_local_authorities_inserted);
-    println!("   |-- {} new Count Points inserted", total_count_points_inserted);
-
     println!("");
+
+    if total_count_points_inserted > 0 {
+        count_points = CountPointDB::load_from_db_hashmap(&pool).await
+            .expect("Error loading Count Points");
+    }
 
     // delete all counts
     print!("-- Clearing Counts table");
@@ -272,7 +294,7 @@ async fn main() {
     }
 
     const BATCH_SIZE: usize = 2123;
-    let mut batch: Vec<CountInsert> = Vec::with_capacity(BATCH_SIZE);
+    let mut batch: Vec<CountDB> = Vec::with_capacity(BATCH_SIZE);
 
     let mut reader = reader_result.unwrap();
     let headers = reader.headers().unwrap().clone();
@@ -328,7 +350,7 @@ async fn main() {
 
         let direction = raw_count.direction_of_travel.trim().to_uppercase();
 
-        let row = CountInsert {
+        let row = CountDB {
             count_point_id: count_point.id,
             date: date,
             hour: raw_count.hour as i16,
@@ -344,7 +366,7 @@ async fn main() {
         batch.push(row);
 
         if batch.len() == BATCH_SIZE {
-            CountInsert::insert_count_batch(&pool, &batch).await.unwrap();
+            CountDB::insert_count_batch(&pool, &batch).await.unwrap();
             records_processed += batch.len() as u64;
             batch.clear();
 
@@ -354,7 +376,7 @@ async fn main() {
     }
 
     if !batch.is_empty() {
-        CountInsert::insert_count_batch(&pool, &batch).await.unwrap();
+        CountDB::insert_count_batch(&pool, &batch).await.unwrap();
         records_processed += batch.len() as u64;
 
         print!("\r   |-- {} records processed", records_processed.to_formatted_string(&Locale::en));

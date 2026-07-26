@@ -1,4 +1,4 @@
-CREATE DATABASE "uk_traffic_accidents"
+CREATE DATABASE "####DATEBASE_NAME####"
     WITH
     ENCODING = 'UTF8'
     LC_COLLATE = 'en_US.UTF-8'
