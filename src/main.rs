@@ -307,6 +307,8 @@ async fn main() {
         .map(|(i, h)| (h, i))
         .collect();
 
+    let mut num_skipped_rows = 0;
+
     let date_format = format_description!("[year]-[month]-[day]");
     let allowed_directions = ["N", "E", "S", "W", "C", "J"];
 
@@ -333,7 +335,10 @@ async fn main() {
                 record.get(header_map["LGVs"]) == Some("-1") ||
                 record.get(header_map["all_HGVs"]) == Some("-1");
 
+            
+
             if count_has_na_value || count_has_negative_value {
+                num_skipped_rows += 1;
                 continue;
             }
 
@@ -401,6 +406,10 @@ async fn main() {
     }
 
     println!("");
+    if num_skipped_rows > 0 {
+        println!("   |-- {} records skipped due to invalid count data", num_skipped_rows);
+    }
+
     println!("");
     println!("Finished! Took {:?}", timer.elapsed());
 }
