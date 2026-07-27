@@ -5,6 +5,8 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::postgres::types::PgPoint;
 use sqlx::{FromRow, PgPool, postgres::PgRow};
 
+use time::Date;
+
 use crate::models::Config;
 
 #[derive(FromRow, Debug)]
@@ -202,6 +204,7 @@ where
         .await
 }
 
+#[derive(Debug, Clone)]
 pub struct CountDB {
     pub count_point_id: i32,
     pub date: time::Date,
@@ -216,7 +219,43 @@ pub struct CountDB {
 }
 
 impl CountDB {
-    pub async fn insert_count_batch(pool: &PgPool, rows: &[Self]) -> Result<(), sqlx::Error> {
+    // Counts table has a unique constraint on "count_point_id, date, hour, direction", a very small number of
+    // records from the CSV violate this constraint. For these records I just want the total vehicle counts to
+    // be merged into a single DB record. So if there's "123, 2025-01-01, 7, 'N', Cars = 20", and another
+    // "123, 2025-01-01, 7, 'N', Cars = 15", there should be just one record "123, 2025-01-01, 7, 'N', Cars = 35"
+    // The "ON CONFLICT ON CONSTRAINT counts_unique_observation" SQL below does this, but it won't work for
+    // INSERTS that are batched together, so this function is needed to check for duplicates within a single
+    // batch. Batches are about 2000 at a time, so shouldn't impact import performance too much.
+    fn merge_duplicate_rows(rows: &[Self]) -> Vec<CountDB> {
+        let mut merged: HashMap<(i32, Date, i16, String), CountDB> = HashMap::with_capacity(rows.len());
+
+        for row in rows {
+            let key = (
+                row.count_point_id,
+                row.date,
+                row.hour,
+                row.direction.clone(),
+            );
+
+            merged
+                .entry(key)
+                .and_modify(|existing| {
+                    existing.bicycles += row.bicycles;
+                    existing.motorcycles += row.motorcycles;
+                    existing.cars += row.cars;
+                    existing.buses += row.buses;
+                    existing.lgvs += row.lgvs;
+                    existing.hgvs += row.hgvs;
+                })
+                .or_insert_with(|| row.clone());
+        }
+
+        merged.into_values().collect()
+    }
+
+    pub async fn insert_batch(pool: &PgPool, rows: &[Self]) -> Result<(), sqlx::Error> {
+        let rows = CountDB::merge_duplicate_rows(rows);
+
         let mut query = QueryBuilder::<Postgres>::new("
             INSERT INTO traffic.counts
             (
@@ -247,7 +286,30 @@ impl CountDB {
                 .push_bind(row.hgvs);
         });
 
+        query.push("
+            ON CONFLICT ON CONSTRAINT counts_unique_observation
+            DO UPDATE SET
+                bicycles    = traffic.counts.bicycles    + EXCLUDED.bicycles,
+                motorcycles = traffic.counts.motorcycles + EXCLUDED.motorcycles,
+                cars        = traffic.counts.cars        + EXCLUDED.cars,
+                buses       = traffic.counts.buses       + EXCLUDED.buses,
+                lgvs        = traffic.counts.lgvs        + EXCLUDED.lgvs,
+                hgvs        = traffic.counts.hgvs        + EXCLUDED.hgvs;
+        ");
+
         query.build().execute(pool).await?;
+
+        return Ok(());
+    }
+
+    pub async fn truncate_all(pool: &PgPool) -> Result<(), sqlx::Error> {
+        let result = sqlx::query("TRUNCATE TABLE traffic.counts;")
+            .execute(pool)
+            .await;
+
+        if let Err(e) = result {
+            return Err(e);
+        }
 
         return Ok(());
     }
@@ -278,21 +340,21 @@ pub async fn ensure_database_exists(config: &Config) -> Result<(), sqlx::Error> 
         sqlx::query(AssertSqlSafe(sql_create_database))
             .execute(&pool)
             .await?;
-
-        // connect to new database and create tables
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect( &format!("{}/{}", config.connection_string, config.database_name))
-            .await?;
-
-        sqlx::raw_sql(AssertSqlSafe(config.sql_create_traffic.clone()))
-            .execute(&pool)
-            .await?;
-
-        sqlx::raw_sql(AssertSqlSafe(config.sql_create_accident.clone()))
-            .execute(&pool)
-            .await?;
     }
 
-    return Ok(());
+    // connect to new database and create tables
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect( &format!("{}/{}", config.connection_string, config.database_name))
+        .await?;
+
+    sqlx::raw_sql(AssertSqlSafe(config.sql_create_traffic.clone()))
+        .execute(&pool)
+        .await?;
+
+    sqlx::raw_sql(AssertSqlSafe(config.sql_create_accident.clone()))
+        .execute(&pool)
+        .await?;
+
+    Ok(())
 }

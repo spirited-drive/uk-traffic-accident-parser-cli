@@ -12,7 +12,7 @@ use time::Date;
 use time::macros::format_description;
 
 use sqlx::postgres::types::PgPoint;
-use sqlx::{postgres::PgPoolOptions};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 
 use crate::database::{CountDB, CountPointDB, LocalAuthorityDB, RegionDB, RoadCategoryDB};
 use crate::csv_utils::{CountPointCSV, RawCountCSV};
@@ -41,7 +41,7 @@ async fn main() {
     println!("----- UK TRAFFIC & ACCIDENT IMPORTER -----");
     println!("------------------------------------------");
     println!("");
-    println!("version: 0.1.0");
+    println!("version: 0.2.0");
     println!("written by: Dominic Pettifer");
     println!("");
 
@@ -140,17 +140,20 @@ async fn main() {
     let mut total_local_authorities_inserted = 0;
     let mut total_count_points_inserted = 0;
 
-    let count_points_reader_result = csv::Reader::from_path("data/traffic/Count Points.csv");
-    if let Err(e) = count_points_reader_result {
-        match e.kind() {
-            csv::ErrorKind::Io(_) => eprintln!("\n   |-- Count Points.csv not found"),
-            _ => eprintln!("\n   |-- Error opening file: {:?}", e),
+    const COUNT_POINTS_PATH: &str = "data/traffic/Count Points.csv";
+    let mut count_points_reader = match csv::Reader::from_path(COUNT_POINTS_PATH) {
+        Ok(reader) => reader,
+        Err(e) => {
+            match e.kind() {
+                csv::ErrorKind::Io(_) => eprintln!("\n   |-- \"{}\" not found", COUNT_POINTS_PATH),
+                _ => eprintln!("\n   |-- Error opening \"{}\": {:?}", COUNT_POINTS_PATH, e),
+            }
+
+            std::process::exit(1);
         }
+    };
 
-        std::process::exit(1);
-    }
-
-    for result in count_points_reader_result.unwrap().deserialize() {
+    for result in count_points_reader.deserialize() {
         let count_point_csv: CountPointCSV = result.unwrap();
 
         let road_category = match road_categories.get(&count_point_csv.road_category) {
@@ -271,9 +274,7 @@ async fn main() {
     print!("-- Clearing Counts table");
     std::io::stdout().flush().unwrap();
 
-    sqlx::query("TRUNCATE TABLE traffic.counts;")
-        .execute(&pool)
-        .await
+    CountDB::truncate_all(&pool).await
         .expect("Error truncating traffic counts.");
 
     print!(" ...done!\n");
@@ -307,6 +308,7 @@ async fn main() {
         .collect();
 
     let date_format = format_description!("[year]-[month]-[day]");
+    let allowed_directions = ["N", "E", "S", "W", "C", "J"];
 
     for result in reader.records() {
         let record = result.unwrap();
@@ -335,20 +337,36 @@ async fn main() {
                 continue;
             }
 
-            let info = e.position().unwrap();
-            eprintln!("Error parsing row {}: {:?}. Error: {:?}", info.line(), record, e);
+            handle_count_csv_parse_error(Some(e), "Deserialization error", &pool).await;
             std::process::exit(1);
         }
 
         let raw_count = raw_count_result.unwrap();
 
-        let count_point = count_points.get(&raw_count.count_point_id)
-            .expect(&format!("Count Point (ID: {}) doesn't exist in database", raw_count.count_point_id));
+        let count_point = match count_points.get(&raw_count.count_point_id) {
+            Some(cp) => cp,
+            None => {
+                let message = format!("Count Point (ID: {}) doesn't exist in Count Points CSV", raw_count.count_point_id);
+                handle_count_csv_parse_error(None, &message, &pool).await;
+                std::process::exit(1);
+            }
+        };
 
-        let date = Date::parse(&raw_count.count_date, &date_format)
-            .expect("Error pasing date");
+        let date = match Date::parse(&raw_count.count_date, &date_format) {
+            Ok(d) => d,
+            Err(e) => {
+                let message = format!("Error parsing date: {:?}. Raw date value: {}", e, &raw_count.count_date);
+                handle_count_csv_parse_error(None, &message, &pool).await;
+                std::process::exit(1);
+            }
+        };
 
         let direction = raw_count.direction_of_travel.trim().to_uppercase();
+        if !allowed_directions.contains(&direction.as_str()) {
+            let message = format!("Invalid direction: {}. Allowed directions are: {:?}", direction, allowed_directions);
+            handle_count_csv_parse_error(None, &message, &pool).await;
+            std::process::exit(1);
+        }
 
         let row = CountDB {
             count_point_id: count_point.id,
@@ -366,7 +384,7 @@ async fn main() {
         batch.push(row);
 
         if batch.len() == BATCH_SIZE {
-            CountDB::insert_count_batch(&pool, &batch).await.unwrap();
+            CountDB::insert_batch(&pool, &batch).await.unwrap();
             records_processed += batch.len() as u64;
             batch.clear();
 
@@ -376,7 +394,7 @@ async fn main() {
     }
 
     if !batch.is_empty() {
-        CountDB::insert_count_batch(&pool, &batch).await.unwrap();
+        CountDB::insert_batch(&pool, &batch).await.unwrap();
         records_processed += batch.len() as u64;
 
         print!("\r   |-- {} records processed", records_processed.to_formatted_string(&Locale::en));
@@ -385,4 +403,19 @@ async fn main() {
     println!("");
     println!("");
     println!("Finished! Took {:?}", timer.elapsed());
+}
+
+async fn handle_count_csv_parse_error(e: Option<csv::Error>, message: &str, pool: &PgPool) {
+    eprintln!("Error parsing row: {:?}.", message);
+
+    if let Some(e) = e {
+        let info = e.position().unwrap();
+        eprintln!("CSV error (row: {}): {:?}", info.line(), e);
+    }
+
+    eprintln!("Counts table wil be truncated");
+
+    if let Err(e) = CountDB::truncate_all(pool).await {
+        eprintln!("Error truncating traffic counts: {:?}", e);
+    }
 }
