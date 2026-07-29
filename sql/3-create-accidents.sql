@@ -152,6 +152,93 @@ ON CONFLICT (name) DO NOTHING;
 
 
 
+-- ---- PEDESTRIAN LOCATIONS ---- --
+-- ------------------------------ --
+CREATE TABLE IF NOT EXISTS accidents.pedestrian_locations
+(
+    id                  INTEGER         NOT NULL        PRIMARY KEY,
+    name                TEXT            NOT NULL        UNIQUE
+);
+
+INSERT INTO accidents.pedestrian_locations (id, name)
+VALUES
+    (0, 'Not a Pedestrian'),
+    (1, 'Crossing on pedestrian crossing facility'),
+    (2, 'Crossing in zig-zag approach lines'),
+    (3, 'Crossing in zig-zag exit lines'),
+    (4, 'Crossing elsewhere within 50m of pedestrian crossing'),
+    (5, 'In carriageway, crossing elsewhere'),
+    (6, 'On footway or verge'),
+    (7, 'On refuge, central island or central reservation'),
+    (8, 'In centre of carriageway - not on refuge, island or central reservation'),
+    (9, 'In carriageway, not crossing'),
+    (10, 'Unknown or other')
+ON CONFLICT (name) DO NOTHING;
+
+
+
+-- ---- PEDESTRIAN MOVEMENTS ---- --
+-- ------------------------------ --
+CREATE TABLE IF NOT EXISTS accidents.pedestrian_movements
+(
+    id                  INTEGER         NOT NULL        PRIMARY KEY,
+    name                TEXT            NOT NULL        UNIQUE
+);
+
+INSERT INTO accidents.pedestrian_movements (id, name)
+VALUES
+    (0, 'Not a Pedestrian'),
+    (1, 'Crossing from driver''s nearside'),
+    (2, 'Crossing from nearside - masked by parked or stationary vehicle'),
+    (3, 'Crossing from driver''s offside'),
+    (4, 'Crossing from offside - masked by parked or stationary vehicle'),
+    (5, 'In carriageway, stationary - not crossing (standing or playing)'),
+    (6, 'In carriageway, stationary - not crossing (standing or playing) - masked by parked or stationary vehicle'),
+    (7, 'Walking along in carriageway, facing traffic'),
+    (8, 'Walking along in carriageway, back to traffic'),
+    (9, 'Unknown or other')
+ON CONFLICT (name) DO NOTHING;
+
+
+
+-- ---- CAR PASSENGER TYPES ---- --
+-- ----------------------------- --
+CREATE TABLE IF NOT EXISTS accidents.car_passenger_types
+(
+    id                  INTEGER         NOT NULL        PRIMARY KEY,
+    name                TEXT            NOT NULL        UNIQUE
+);
+
+INSERT INTO accidents.car_passenger_types (id, name)
+VALUES
+    (0, 'Not car passenger'),
+    (1, 'Front seat passenger'),
+    (2, 'Rear seat passenger'),
+    (9, 'Unknown (self reported)')
+ON CONFLICT (name) DO NOTHING;
+
+
+
+-- ---- BUS PASSENGER TYPES ---- --
+-- ----------------------------- --
+CREATE TABLE IF NOT EXISTS accidents.bus_passenger_types
+(
+    id                  INTEGER         NOT NULL        PRIMARY KEY,
+    name                TEXT            NOT NULL        UNIQUE
+);
+
+INSERT INTO accidents.bus_passenger_types (id, name)
+VALUES
+    (0, 'Not a bus or coach passenger'),
+    (1, 'Boarding'),
+    (2, 'Alighting'),
+    (3, 'Standing passenger'),
+    (4, 'Seated passenger'),
+    (9, 'Unknown (self reported)')
+ON CONFLICT (name) DO NOTHING;
+
+
+
 -- ---- JOURNEY PURPOSES ---- --
 -- -------------------------- --
 CREATE TABLE IF NOT EXISTS accidents.journey_purposes
@@ -233,7 +320,8 @@ VALUES
     (4, 'Frost or Ice'),
     (5, 'Flood Over 3cm Deep'),
     (6, 'Oil/Diesel'),
-    (7, 'Mud')
+    (7, 'Mud'),
+    (9, 'Unknown')
 ON CONFLICT (name) DO NOTHING;
 
 
@@ -263,7 +351,8 @@ VALUES
     (15, 'Mud'),
     (16, 'Dislodged vehicle load in carriageway'),
     (18, 'Involvement with previous collision'),
-    (21, 'Poor or defective road surface')
+    (21, 'Poor or defective road surface'),
+    (99, 'Unknown')
 ON CONFLICT (name) DO NOTHING;
 
 
@@ -287,6 +376,27 @@ VALUES
     (6, 'Oil or diesel'),
     (7, 'Mud'),
     (9, 'Unknown (self reported)')
+ON CONFLICT (name) DO NOTHING;
+
+
+
+-- ---- ROAD TYPES ---- --
+-- -------------------- --
+CREATE TABLE IF NOT EXISTS accidents.road_types
+(
+    id                  INTEGER         NOT NULL        PRIMARY KEY,
+    name                TEXT            NOT NULL        UNIQUE
+);
+
+INSERT INTO accidents.road_types (id, name)
+VALUES
+    (1, 'Roundabout'),
+    (2, 'One way street'),
+    (3, 'Dual carriageway'),
+    (6, 'Single carriageway'),
+    (7, 'Slip road'),
+    (9, 'Unknown'),
+    (12, 'One way street/Slip road')
 ON CONFLICT (name) DO NOTHING;
 
 
@@ -488,15 +598,15 @@ ON CONFLICT (name) DO NOTHING;
 
 
 
--- ---- VEHICLE SKIDDING OVERTUNINGT TYPES ---- --
--- --------------------------------------- --
-CREATE TABLE IF NOT EXISTS accidents.vehicle_skidding_overtuning_types
+-- ---- VEHICLE SKID OVERTURNING TYPES ---- --
+-- ---------------------------------------- --
+CREATE TABLE IF NOT EXISTS accidents.vehicle_skid_overturning_types
 (
     id                  INTEGER         NOT NULL        PRIMARY KEY,
     name                TEXT            NOT NULL        UNIQUE
 );
 
-INSERT INTO accidents.vehicle_skidding_overtuning_types (id, name)
+INSERT INTO accidents.vehicle_skid_overturning_types (id, name)
 VALUES
     (0, 'None'),
     (1, 'Skidded'),
@@ -506,3 +616,236 @@ VALUES
     (5, 'Overturned'),
     (9, 'Unknown (self reported)')
 ON CONFLICT (name) DO NOTHING;
+
+
+
+-- ---- VEHICLE LEAVING ROAD TYPES ---- --
+-- ------------------------------------ --
+CREATE TABLE IF NOT EXISTS accidents.vehicle_leaving_road_types
+(
+    id                  INTEGER         NOT NULL        PRIMARY KEY,
+    name                TEXT            NOT NULL        UNIQUE
+);
+
+INSERT INTO accidents.vehicle_leaving_road_types (id, name)
+VALUES
+    (0, 'Did not leave carriageway'),
+    (1, 'Nearside'),
+    (2, 'Nearside and rebounded'),
+    (3, 'Straight ahead at junction'),
+    (4, 'Offside on to central reservation'),
+    (5, 'Offside on to central reservation + rebounded'),
+    (6, 'Offside - crossed central reservation'),
+    (7, 'Offside'),
+    (8, 'Offside and rebounded'),
+    (9, 'Unknown (self reported)')
+ON CONFLICT (name) DO NOTHING;
+
+
+
+-- ---- POLICE ATTENDANCE TYPES ---- --
+-- --------------------------------- --
+CREATE TABLE IF NOT EXISTS accidents.police_attendance_types
+(
+    id                  INTEGER         NOT NULL        PRIMARY KEY,
+    name                TEXT            NOT NULL        UNIQUE
+);
+
+INSERT INTO accidents.police_attendance_types (id, name)
+VALUES
+    (1, 'Attended'),
+    (2, 'Did not attend'),
+    (3, 'Did not attend - accident self reported using form')
+ON CONFLICT (name) DO NOTHING;
+
+
+
+-- ---- COLLISIONS ---- --
+-- -------------------- --
+CREATE TABLE IF NOT EXISTS accidents.collisions
+(
+    id                          SERIAL          NOT NULL        PRIMARY KEY,
+    collision_index             TEXT            NOT NULL        UNIQUE,
+    ref_no                      TEXT            NOT NULL        UNIQUE,
+    date                        TIMESTAMP       NOT NULL,
+    location                    POINT           NOT NULL,
+    police_force_id             INTEGER         NOT NULL,
+    severity_id                 INTEGER         NOT NULL,
+    road_name                   TEXT            NOT NULL,
+    road_type_id                INTEGER         NOT NULL,
+    speed_limit                 SMALLINT        NOT NULL,
+    light_condition_id          INTEGER         NOT NULL,
+    weather_condition_id        INTEGER         NOT NULL,
+    road_condition_id           INTEGER         NOT NULL,
+    special_condition_id        INTEGER         NOT NULL,
+    hazard_id                   INTEGER         NOT NULL,
+    is_rural                    BOOLEAN         NULL            DEFAULT NULL,
+    police_attendance_type_id   INTEGER         NOT NULL,
+    is_trunk_road               BOOLEAN         NULL            DEFAULT NULL,
+
+    FOREIGN KEY (police_force_id) REFERENCES accidents.police_forces(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (severity_id) REFERENCES accidents.severities(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (road_type_id) REFERENCES accidents.road_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (light_condition_id) REFERENCES accidents.light_conditions(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (weather_condition_id) REFERENCES accidents.weather_conditions(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (road_condition_id) REFERENCES accidents.road_conditions(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (special_condition_id) REFERENCES accidents.special_conditions(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (hazard_id) REFERENCES accidents.hazards(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (police_attendance_type_id) REFERENCES accidents.police_attendance_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION
+);
+
+
+
+-- ---- VEHICLES ---- --
+-- ------------------ --
+CREATE TABLE IF NOT EXISTS accidents.vehicles
+(
+    id                          SERIAL          NOT NULL        PRIMARY KEY,
+    collision_id                INTEGER         NOT NULL,
+    ref_no                      SMALLINT        NOT NULL,
+    type_id                     INTEGER         NOT NULL,
+    towing_type_id              INTEGER         NOT NULL,
+    manoeuvre_id                INTEGER         NOT NULL,
+    direction_from              VARCHAR(2)      NULL            CHECK (direction_from IN ('N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'U')),
+    direction_to                VARCHAR(2)      NULL            CHECK (direction_from IN ('N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'U')),
+    skid_overturning_type_id    INTEGER         NOT NULL,
+    hit_object_on_road_type_id  INTEGER         NOT NULL,
+    leaving_road_type_id        INTEGER         NOT NULL,
+    hit_object_off_road_type_id INTEGER         NOT NULL,
+    point_of_impact_type_id     INTEGER         NOT NULL,
+    is_left_hand_drive          BOOLEAN         NULL            DEFAULT false,
+    journey_purpose_id          INTEGER         NOT NULL,
+    is_driver_male              BOOLEAN         NULL            DEFAULT NULL,
+    driver_age                  SMALLINT        NULL            DEFAULT NULL,
+    engine_capacity             SMALLINT        NULL            DEFAULT NULL,
+    propulsion_type_id          INTEGER         NULL            DEFAULT NULL,
+    vehicle_age                 SMALLINT        NULL            DEFAULT NULL,
+    make_model                  TEXT            NULL            DEFAULT NULL,
+
+    FOREIGN KEY (collision_id) REFERENCES accidents.collisions(id)
+        ON DELETE CASCADE
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (type_id) REFERENCES accidents.vehicle_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (towing_type_id) REFERENCES accidents.vehicle_towing_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (manoeuvre_id) REFERENCES accidents.vehicle_manoeuvres(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (skid_overturning_type_id) REFERENCES accidents.vehicle_skid_overturning_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (hit_object_on_road_type_id) REFERENCES accidents.vehicle_hit_object_on_road_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (leaving_road_type_id) REFERENCES accidents.vehicle_leaving_road_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (hit_object_off_road_type_id) REFERENCES accidents.vehicle_hit_object_off_road_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (point_of_impact_type_id) REFERENCES accidents.vehicle_point_of_impact_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (journey_purpose_id) REFERENCES accidents.journey_purposes(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (propulsion_type_id) REFERENCES accidents.vehicle_propulsion_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION
+);
+
+
+
+-- ---- CASUALTIES ---- --
+-- -------------------- --
+CREATE TABLE IF NOT EXISTS accidents.casualties
+(
+    id                          SERIAL          NOT NULL        PRIMARY KEY,
+    collision_id                INTEGER         NOT NULL,
+    vehicle_id                  INTEGER         NOT NULL,
+    ref_no                      SMALLINT        NOT NULL,
+    class_id                    INTEGER         NOT NULL,
+    is_male                     BOOLEAN         NULL            DEFAULT NULL,
+    age                         SMALLINT        NULL            DEFAULT NULL,
+    severity_id                 INTEGER         NOT NULL,
+    pedestrian_location_id      INTEGER         NOT NULL,
+    pedestrian_movement_id      INTEGER         NOT NULL,
+    car_passenger_type_id       INTEGER         NOT NULL,
+    bus_passenger_type_id       INTEGER         NOT NULL,
+    type_id                     INTEGER         NOT NULL,
+
+    FOREIGN KEY (collision_id) REFERENCES accidents.collisions(id)
+        ON DELETE CASCADE
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (vehicle_id) REFERENCES accidents.vehicles(id)
+        ON DELETE CASCADE
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (class_id) REFERENCES accidents.casualty_classes(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (severity_id) REFERENCES accidents.severities(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (pedestrian_location_id) REFERENCES accidents.pedestrian_locations(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (pedestrian_movement_id) REFERENCES accidents.pedestrian_movements(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (car_passenger_type_id) REFERENCES accidents.car_passenger_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (bus_passenger_type_id) REFERENCES accidents.bus_passenger_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+
+    FOREIGN KEY (type_id) REFERENCES accidents.casualty_types(id)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION
+);
