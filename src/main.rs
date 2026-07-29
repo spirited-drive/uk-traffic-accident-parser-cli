@@ -66,7 +66,7 @@ async fn main() {
         .expect("Error connecting to database");
 
     // run traffic import
-    let mut traffic_importer = TrafficImporter::new(&pool);
+    let traffic_importer = TrafficImporter::new(&pool);
     if let Err(e) = traffic_importer.run().await {
         eprintln!("{e}");
         std::process::exit(1);

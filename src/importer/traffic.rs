@@ -29,7 +29,7 @@ impl<'a> TrafficImporter<'a> {
         }
     }
 
-    pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut data = self.load_data().await?;
         self.import_count_points(&mut data).await?;
         self.import_raw_counts(&mut data).await?;
@@ -37,7 +37,7 @@ impl<'a> TrafficImporter<'a> {
         Ok(())
     }
 
-    async fn load_data(&mut self) -> Result<TrafficData, Box<dyn std::error::Error>> {
+    async fn load_data(&self) -> Result<TrafficData, Box<dyn std::error::Error>> {
         // load Road Categories
         print!("-- Loading Road Categories");
         std::io::stdout().flush().unwrap();
@@ -116,7 +116,7 @@ impl<'a> TrafficImporter<'a> {
         })
     }
 
-    async fn import_count_points(&mut self, data: &mut TrafficData) -> Result<(), Box<dyn std::error::Error>> {
+    async fn import_count_points(&self, data: &mut TrafficData) -> Result<(), Box<dyn std::error::Error>> {
         // load CSV count points
         println!("-- Reading \"Count Points.csv\" file");
 
@@ -140,7 +140,10 @@ impl<'a> TrafficImporter<'a> {
         };
 
         for result in count_points_reader.deserialize() {
-            let count_point_csv: CountPointCSV = result.unwrap();
+            let count_point_csv: CountPointCSV = match result {
+                Ok(csv) => csv,
+                Err(e) => return Err(format!("Error deserializing Count Point: {e}").into()),
+            };
 
             let road_category = match data.road_categories.get(&count_point_csv.road_category) {
                 Some(rc) => rc,
@@ -273,7 +276,7 @@ impl<'a> TrafficImporter<'a> {
         Ok(())
     }
 
-    async fn import_raw_counts(&mut self, data: &mut TrafficData) -> Result<(), Box<dyn std::error::Error>> {
+    async fn import_raw_counts(&self, data: &mut TrafficData) -> Result<(), Box<dyn std::error::Error>> {
         // delete all counts
         print!("-- Clearing Counts table");
         std::io::stdout().flush().unwrap();
@@ -289,19 +292,24 @@ impl<'a> TrafficImporter<'a> {
         println!("-- Reading \"Raw counts.csv\" file (this will take a while)...");
         std::io::stdout().flush().unwrap();
 
-        let reader_result = csv::Reader::from_path("data/traffic/Raw counts.csv");
-        if let Err(e) = reader_result {
-            match e.kind() {
-                csv::ErrorKind::Io(_) => return Err("Raw counts.csv not found".into()),
-                _ => return Err(format!("Error opening file: {e}").into()),
-            }
-        }
-
         const BATCH_SIZE: usize = 2123;
         let mut batch: Vec<CountDB> = Vec::with_capacity(BATCH_SIZE);
 
-        let mut reader = reader_result.unwrap();
-        let headers = reader.headers().unwrap().clone();
+        let mut reader = match csv::Reader::from_path("data/traffic/Raw counts.csv") {
+            Ok(rr) => rr,
+            Err(e) => {
+                match e.kind() {
+                    csv::ErrorKind::Io(_) => return Err("Raw counts.csv not found".into()),
+                    _ => return Err(format!("Error opening file: {e}").into()),
+                }
+            }
+        };
+
+        let headers = match reader.headers() {
+            Ok(h) => h.clone(),
+            Err(e) => return Err(format!("Error extracting headers for Raw Counts: {e}").into()),
+        };
+
         let mut records_processed = 0;
 
         let header_map: HashMap<&str, usize> = headers
@@ -316,37 +324,38 @@ impl<'a> TrafficImporter<'a> {
         let allowed_directions = ["N", "E", "S", "W", "C", "J"];
 
         for result in reader.records() {
-            let record = result.unwrap();
+            let record = match result {
+                Ok(r) => r,
+                Err(e) => return Err(format!("Error extracting Raw Count row: {e}").into()),
+            };
 
-            let raw_count_result: Result<RawCountCSV, csv::Error> = record.deserialize(Some(&headers));
+            let raw_count: RawCountCSV = match record.deserialize(Some(&headers)) {
+                Ok(c) => c,
+                Err(e) => {
+                    let count_has_na_value =
+                        record.get(header_map["pedal_cycles"]) == Some("NA") ||
+                        record.get(header_map["two_wheeled_motor_vehicles"]) == Some("NA") ||
+                        record.get(header_map["cars_and_taxis"]) == Some("NA") ||
+                        record.get(header_map["buses_and_coaches"]) == Some("NA") ||
+                        record.get(header_map["LGVs"]) == Some("NA") ||
+                        record.get(header_map["all_HGVs"]) == Some("NA");
 
-            if let Err(e) = raw_count_result {
-                // ignore rows with invalid values as there's only about a dozen for millions of rows
-                let count_has_na_value =
-                    record.get(header_map["pedal_cycles"]) == Some("NA") ||
-                    record.get(header_map["two_wheeled_motor_vehicles"]) == Some("NA") ||
-                    record.get(header_map["cars_and_taxis"]) == Some("NA") ||
-                    record.get(header_map["buses_and_coaches"]) == Some("NA") ||
-                    record.get(header_map["LGVs"]) == Some("NA") ||
-                    record.get(header_map["all_HGVs"]) == Some("NA");
+                    let count_has_negative_value =
+                        record.get(header_map["pedal_cycles"]) == Some("-1") ||
+                        record.get(header_map["two_wheeled_motor_vehicles"]) == Some("-1") ||
+                        record.get(header_map["cars_and_taxis"]) == Some("-1") ||
+                        record.get(header_map["buses_and_coaches"]) == Some("-1") ||
+                        record.get(header_map["LGVs"]) == Some("-1") ||
+                        record.get(header_map["all_HGVs"]) == Some("-1");
 
-                let count_has_negative_value =
-                    record.get(header_map["pedal_cycles"]) == Some("-1") ||
-                    record.get(header_map["two_wheeled_motor_vehicles"]) == Some("-1") ||
-                    record.get(header_map["cars_and_taxis"]) == Some("-1") ||
-                    record.get(header_map["buses_and_coaches"]) == Some("-1") ||
-                    record.get(header_map["LGVs"]) == Some("-1") ||
-                    record.get(header_map["all_HGVs"]) == Some("-1");
+                    if count_has_na_value || count_has_negative_value {
+                        num_skipped_rows += 1;
+                        continue;
+                    }
 
-                if count_has_na_value || count_has_negative_value {
-                    num_skipped_rows += 1;
-                    continue;
+                    return Err(handle_count_csv_parse_error(Some(e), "Deserialization error", self.pool).await.into());
                 }
-
-                return Err(handle_count_csv_parse_error(Some(e), "Deserialization error", self.pool).await.into());
-            }
-
-            let raw_count = raw_count_result.unwrap();
+            };
 
             let count_point = match data.count_points.get(&raw_count.count_point_id) {
                 Some(cp) => cp,
@@ -402,7 +411,7 @@ impl<'a> TrafficImporter<'a> {
             if let Err(e) = CountDB::insert_batch(self.pool, &batch).await {
                 return Err(format!("Error inserting batch of counts: {e}").into());
             }
-            
+
             records_processed += batch.len() as u64;
 
             print!("\r   |-- {} records processed", records_processed.to_formatted_string(&Locale::en));
@@ -420,7 +429,7 @@ impl<'a> TrafficImporter<'a> {
 }
 
 async fn handle_count_csv_parse_error(e: Option<csv::Error>, message: &str, pool: &PgPool) -> String {
-    let mut error_message = String::from(format!("Error parsing row: {message}. "));
+    let mut error_message = format!("Error parsing row: {message}. ");
 
     if let Some(e) = e {
         let info = e.position().unwrap();
